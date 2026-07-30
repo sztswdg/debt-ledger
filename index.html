@@ -78,6 +78,14 @@ input,select,textarea,button{font-family:var(--font-stack);font-size:16px}
 .form-select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238e8e93' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:32px}
 textarea.form-input{min-height:80px;resize:vertical}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* Custom Amounts */
+.custom-amt-area{max-height:240px;overflow-y:auto;margin-top:8px}
+.custom-amt-area::-webkit-scrollbar{width:3px}
+.custom-amt-area::-webkit-scrollbar-thumb{background:var(--separator);border-radius:2px}
+.custom-amt-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.custom-amt-row .amt-label{font-size:12px;color:var(--text-secondary);min-width:60px;flex-shrink:0}
+.custom-amt-row .amt-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:var(--input-bg);color:var(--text);font-size:14px;outline:none;text-align:right}
+.custom-amt-row .amt-input:focus{box-shadow:0 0 0 2px var(--accent)}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:var(--modal-overlay);z-index:100;display:none;align-items:flex-end;justify-content:center;animation:fadeIn .2s}
@@ -689,6 +697,12 @@ async function editLiability(id){
 function showLiabilityForm(liability){
   const isEdit=!!liability;
   const isInstallment=liability?liability.type==='installment':true;
+  // Check if existing installments have varying amounts
+  let hasCustomAmts=false;
+  if(isEdit&&isInstallment&&liability.installments&&liability.installments.length>1){
+    const firstAmt=liability.installments[0].amount;
+    hasCustomAmts=liability.installments.some(i=>Math.abs(i.amount-firstAmt)>0.001);
+  }
   openModal(isEdit?'编辑负债':'添加负债',`
     <div class="form-group"><label class="form-label">负债名称</label><input class="form-input" id="lfName" value="${liability?liability.name:''}" placeholder="如：房贷"></div>
     <div class="form-group"><label class="form-label">负债类型</label>
@@ -701,8 +715,15 @@ function showLiabilityForm(liability){
     <div class="form-group"><label class="form-label">年利率 (%)</label><input class="form-input" id="lfRate" value="${liability?liability.annualRate:''}" inputmode="decimal" placeholder="如：4.2"></div>
     <div id="lfInstallmentFields" style="${isInstallment?'':'display:none'}">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">分期月数</label><input class="form-input" id="lfMonths" value="${liability&&liability.months?liability.months:''}" inputmode="numeric" placeholder="1-36"></div>
+        <div class="form-group"><label class="form-label">分期月数</label><input class="form-input" id="lfMonths" value="${liability&&liability.months?liability.months:''}" inputmode="numeric" placeholder="1-36" oninput="genCustomAmtInputs()"></div>
         <div class="form-group"><label class="form-label">还款日(1-28)</label><input class="form-input" id="lfPayDay" value="${liability?liability.paymentDay:'1'}" inputmode="numeric" placeholder="1"></div>
+      </div>
+      <div style="margin-top:8px;border-top:0.5px solid var(--separator);padding-top:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label class="form-label" style="margin-bottom:0">每期金额</label>
+          <button class="btn btn-sm btn-outline" id="lfCustomAmtBtn" onclick="toggleCustomAmounts()" style="font-size:12px">逐期填写</button>
+        </div>
+        <div id="lfCustomAmounts" style="display:${hasCustomAmts?'block':'none'};margin-top:8px" class="custom-amt-area"></div>
       </div>
     </div>
     <div class="form-group"><label class="form-label">借款日期</label><input class="form-input" id="lfBorrowDate" type="date" value="${liability&&liability.borrowDate?liability.borrowDate:today()}"></div>
@@ -720,6 +741,16 @@ function showLiabilityForm(liability){
     <button class="btn btn-primary btn-block" onclick="saveLiability('${isEdit?liability.id:''}')">${isEdit?'保存':'添加'}</button>
   `);
   window._lfIsInstallment=isInstallment;
+  // Initialize custom amounts if editing with varying amounts
+  if(hasCustomAmts&&liability&&liability.installments){
+    setTimeout(()=>{
+      const el=document.getElementById('lfCustomAmounts');
+      if(el){
+        el._customAmts=liability.installments.map(i=>i.amount);
+        genCustomAmtInputs();
+      }
+    },50);
+  }
 }
 
 function setLiabilityType(ins){
@@ -728,6 +759,44 @@ function setLiabilityType(ins){
   document.getElementById('lfTypeBtn2').className='btn btn-sm '+(!ins?'btn-primary':'btn-outline');
   document.getElementById('lfInstallmentFields').style.display=ins?'':'none';
   document.getElementById('lfNonInstallmentFields').style.display=!ins?'':'none';
+}
+
+function toggleCustomAmounts(){
+  const el=document.getElementById('lfCustomAmounts');
+  const btn=document.getElementById('lfCustomAmtBtn');
+  if(!el||!btn)return;
+  const show=el.style.display==='none';
+  el.style.display=show?'block':'none';
+  btn.textContent=show?'收起':'逐期填写';
+  if(show)genCustomAmtInputs();
+}
+
+function genCustomAmtInputs(){
+  const el=document.getElementById('lfCustomAmounts');
+  if(!el||el.style.display==='none')return;
+  // Get current installments if editing
+  const months=Math.min(36,Math.max(1,parseInt(($('lfMonths').value||'1'))));
+  // Look for existing custom amounts from the liability being edited
+  const modal=document.querySelector('.modal-sheet');
+  const amts=el._customAmts||[];
+  let html='';
+  for(let i=0;i<months;i++){
+    const val=amts[i]!==undefined?amts[i]:'';
+    html+=`<div class="custom-amt-row"><span class="amt-label">第${i+1}期</span><input class="amt-input" id="lfCustAmt_${i}" value="${val}" inputmode="decimal" placeholder="金额"></div>`;
+  }
+  el.innerHTML=html;
+}
+
+function getCustomAmounts(months){
+  const el=document.getElementById('lfCustomAmounts');
+  if(!el||el.style.display==='none')return null;
+  const amts=[];
+  for(let i=0;i<months;i++){
+    const val=parseFloat((document.getElementById('lfCustAmt_'+i)||{}).value||'');
+    if(!isNaN(val)&&val>0)amts.push(val);
+    else break;
+  }
+  return amts.length===months?amts:null;
 }
 
 async function saveLiability(id){
@@ -751,11 +820,18 @@ async function saveLiability(id){
         // Recalculate installments
         if(!l.installments||l.installments.length!==months){
           l.installments=[];
-          const baseAmt=calcInstallmentAmount(totalAmount,annualRate,months);
+          const customAmts=getCustomAmounts(months);
           const borrow=new Date(borrowDate);
           for(let i=0;i<months;i++){
             const due=new Date(borrow.getFullYear(),borrow.getMonth()+i+1,paymentDay);
-            l.installments.push({period:i+1,amount:baseAmt,dueDate:dateStr(due),status:'unpaid',paidAmount:0});
+            const amt=customAmts?customAmts[i]:calcInstallmentAmount(totalAmount,annualRate,months);
+            l.installments.push({period:i+1,amount:amt,dueDate:dateStr(due),status:'unpaid',paidAmount:0});
+          }
+        }else if(getCustomAmounts(months)){
+          // Update amounts if custom amounts provided (same period count)
+          const customAmts=getCustomAmounts(months);
+          for(let i=0;i<months;i++){
+            if(l.installments[i])l.installments[i].amount=customAmts[i];
           }
         }
       }else{
@@ -774,11 +850,12 @@ async function saveLiability(id){
       const paymentDay=Math.min(28,Math.max(1,parseInt($('lfPayDay').value)||1));
       l.months=months;l.paymentDay=paymentDay;
       l.installments=[];
-      const baseAmt=calcInstallmentAmount(totalAmount,annualRate,months);
+      const customAmts=getCustomAmounts(months);
       const borrow=new Date(borrowDate);
       for(let i=0;i<months;i++){
         const due=new Date(borrow.getFullYear(),borrow.getMonth()+i+1,paymentDay);
-        l.installments.push({period:i+1,amount:baseAmt,dueDate:dateStr(due),status:'unpaid',paidAmount:0});
+        const amt=customAmts?customAmts[i]:calcInstallmentAmount(totalAmount,annualRate,months);
+        l.installments.push({period:i+1,amount:amt,dueDate:dateStr(due),status:'unpaid',paidAmount:0});
       }
     }else{
       l.type='non-installment';
