@@ -123,10 +123,11 @@ select.form-control { appearance: auto; }
 .install-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(32px, 1fr)); gap: 4px; margin: 12px 0; }
 .install-cell { aspect-ratio: 1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; cursor: pointer; transition: .15s; }
 .install-cell.paid { background: #10b981; color: #fff; }
+.install-cell.partial { background: #f59e0b; color: #fff; }
 .install-cell.pending { background: #e2e8f0; color: #64748b; }
 .install-cell.overdue { background: #ef4444; color: #fff; }
 .install-cell:hover { transform: scale(1.1); }
-.install-legend { display: flex; gap: 12px; font-size: 12px; margin-top: 8px; }
+.install-legend { display: flex; gap: 12px; font-size: 12px; margin-top: 8px; flex-wrap: wrap; }
 .install-legend span { display: flex; align-items: center; gap: 4px; }
 .install-legend .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 
@@ -406,14 +407,17 @@ tr:hover td { background: #f8fafc; }
   <div id="installGrid" class="install-grid"></div>
   <div class="install-legend">
     <span><span class="dot" style="background:#10b981;"></span> 已还</span>
-    <span><span class="dot" style="background:#e2e8f0;"></span> 待还</span>
+    <span><span class="dot" style="background:#f59e0b;"></span> 部分还</span>
+    <span><span class="dot" style="background:#e2e8f0;"></span> 未还</span>
     <span><span class="dot" style="background:#ef4444;"></span> 逾期</span>
   </div>
   <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;">
-    <input class="form-control form-control-sm" id="installPayIndex" type="number" placeholder="期数编号" style="flex:1;min-width:80px;">
+    <input class="form-control form-control-sm" id="installPayIndex" type="number" placeholder="期数编号" style="flex:1;min-width:60px;">
+    <input class="form-control form-control-sm" id="installPayAmount" type="number" step="0.01" placeholder="还款金额" style="flex:1;min-width:80px;">
     <button class="btn btn-success btn-sm" onclick="payInstallment()">还款</button>
     <button class="btn btn-outline btn-sm" onclick="closeModal('installModal');renderDebts();">关闭</button>
   </div>
+  <div style="margin-top:6px;font-size:12px;color:#94a3b8;">点击色块也可快速还款（金额默认该期应还额）</div>
 </div></div>
 
 <!-- Ledger Modal -->
@@ -759,8 +763,9 @@ function saveDebt() {
   if (idx !== '') {
     debts[idx] = { ...debts[idx], name, amount, paid, overdue, status, installCount, installDay };
   } else {
-    // Initialize installments
-    const installs = installCount > 1 ? Array.from({length: installCount}, (_, k) => ({ index: k + 1, status: 'pending', paid: false })) : [];
+    // Initialize installments with paidAmount and dueAmount
+    const perInstallAmount = installCount > 1 ? (amount / installCount) : 0;
+    const installs = installCount > 1 ? Array.from({length: installCount}, (_, k) => ({ index: k + 1, status: 'pending', paid: false, paidAmount: 0, dueAmount: perInstallAmount })) : [];
     debts.push({ name, amount, paid, overdue, status, installCount, installDay, reminder: false, installments: installs, created: Date.now() });
   }
   saveData('debts', debts);
@@ -788,53 +793,85 @@ function openInstallModal(i) {
   _installDebtIdx = i;
   const d = debts[i];
   const perInstall = (parseFloat(d.amount) || 0) / (d.installCount || 1);
+  const installs = d.installments || [];
+  const fullyPaidCount = installs.filter(x => x.paid).length;
+  const partialCount = installs.filter(x => !x.paid && (x.paidAmount || 0) > 0).length;
+  const totalPaidAmt = installs.reduce((s, x) => s + (x.paidAmount || 0), 0);
+
   document.getElementById('installModalTitle').textContent = `${esc(d.name)} - 分期计划`;
   document.getElementById('installInfo').innerHTML =
     `<div style="display:flex;gap:16px;flex-wrap:wrap;">
       <div><span style="color:#94a3b8;font-size:12px;">每期应还</span><br><span style="font-size:18px;font-weight:700;">¥${perInstall.toFixed(2)}</span></div>
       <div><span style="color:#94a3b8;font-size:12px;">总期数</span><br><span style="font-size:18px;font-weight:700;">${d.installCount}期</span></div>
-      <div><span style="color:#94a3b8;font-size:12px;">已还</span><br><span style="font-size:18px;font-weight:700;color:#059669;">${(d.installments||[]).filter(x=>x.paid).length}期</span></div>
+      <div><span style="color:#94a3b8;font-size:12px;">已还清</span><br><span style="font-size:18px;font-weight:700;color:#059669;">${fullyPaidCount}期</span></div>
+      <div><span style="color:#94a3b8;font-size:12px;">已还金额</span><br><span style="font-size:16px;font-weight:700;color:#059669;">¥${totalPaidAmt.toFixed(2)}</span></div>
     </div>`;
 
-  const installs = d.installments || [];
   const grid = document.getElementById('installGrid');
   grid.innerHTML = installs.map((ins, idx) => {
-    let cls = 'pending';
-    if (ins.paid) cls = 'paid';
-    else if (ins.status === 'overdue') cls = 'overdue';
-    return `<div class="install-cell ${cls}" onclick="quickPayInstall(${i},${idx})" title="第${ins.index}期">${ins.index}</div>`;
+    let cls = 'pending', tip = '';
+    if (ins.paid) { cls = 'paid'; tip = `第${ins.index}期：已还清 ¥${(ins.paidAmount||0).toFixed(2)} / ¥${(ins.dueAmount||perInstall).toFixed(2)}`; }
+    else if ((ins.paidAmount || 0) > 0) { cls = 'partial'; tip = `第${ins.index}期：部分还 ¥${(ins.paidAmount||0).toFixed(2)} / ¥${(ins.dueAmount||perInstall).toFixed(2)}`; }
+    else if (ins.status === 'overdue') { cls = 'overdue'; tip = `第${ins.index}期：逾期 ¥${(ins.dueAmount||perInstall).toFixed(2)}`; }
+    else { tip = `第${ins.index}期：未还 ¥${(ins.dueAmount||perInstall).toFixed(2)}`; }
+    // Show a progress indicator inside the cell for partial
+    const pct = (ins.paidAmount || 0) / (ins.dueAmount || perInstall);
+    const inner = ins.paid ? '✓' : (cls === 'partial' ? Math.round(pct * 100) + '%' : ins.index);
+    return `<div class="install-cell ${cls}" onclick="quickPayInstall(${i},${idx})" title="${tip}">${inner}</div>`;
   }).join('');
   openModal('installModal');
 }
 
-function quickPayInstall(debtIdx, insIdx) {
+function quickPayInstall(debtIdx, insIdx, customAmount) {
   const d = debts[debtIdx];
-  if (!d.installments[insIdx].paid) {
-    d.installments[insIdx].paid = true;
-    d.installments[insIdx].status = 'paid';
-    const perInstall = (parseFloat(d.amount) || 0) / (d.installCount || 1);
-    d.paid = (parseFloat(d.paid) || 0) + perInstall;
-    // Round to avoid floating point issues
-    d.paid = Math.round(d.paid * 100) / 100;
-    if ((parseFloat(d.amount) || 0) - d.paid <= 0.01) {
-      d.paid = parseFloat(d.amount) || 0;
-      d.status = 'normal';
-    }
-    saveData('debts', debts);
-    openInstallModal(debtIdx);
-    renderDebts();
-    renderOverview();
-    toast(`第${insIdx+1}期已还款`);
+  const ins = d.installments[insIdx];
+  const perInstall = ins.dueAmount || ((parseFloat(d.amount) || 0) / (d.installCount || 1));
+  const amount = (customAmount !== undefined && customAmount !== null) ? parseFloat(customAmount) : perInstall;
+  if (isNaN(amount) || amount <= 0) { toast('请输入有效金额'); return; }
+  if (ins.paid) { toast(`第${insIdx+1}期已还清`); return; }
+
+  // Update paidAmount
+  ins.paidAmount = (ins.paidAmount || 0) + amount;
+  // Round
+  ins.paidAmount = Math.round(ins.paidAmount * 100) / 100;
+
+  // Status logic: paidAmount >= dueAmount → paid (已还)
+  // paidAmount > 0 and < dueAmount → partial (部分还)
+  const due = perInstall;
+  if (ins.paidAmount >= due - 0.01) {
+    ins.paid = true;
+    ins.status = 'paid';
+    ins.paidAmount = due; // clamp
+  } else {
+    ins.paid = false;
+    ins.status = 'partial';
   }
+
+  // Update total debt paid amount
+  d.paid = d.installments.reduce((s, x) => s + (x.paidAmount || 0), 0);
+  d.paid = Math.round(d.paid * 100) / 100;
+  if ((parseFloat(d.amount) || 0) - d.paid <= 0.01) {
+    d.paid = parseFloat(d.amount) || 0;
+    d.status = 'normal';
+  }
+  saveData('debts', debts);
+  openInstallModal(debtIdx);
+  renderDebts();
+  renderOverview();
+  const statusText = ins.paid ? `第${insIdx+1}期已还清` : `第${insIdx+1}期已还 ¥${amount.toFixed(2)}（剩余 ¥${(due - ins.paidAmount).toFixed(2)}）`;
+  toast(statusText);
 }
 
 function payInstallment() {
   const idx = parseInt(document.getElementById('installPayIndex').value);
+  const amtInput = document.getElementById('installPayAmount');
+  const amount = parseFloat(amtInput.value);
   if (isNaN(idx) || idx < 1) { toast('请输入有效期数'); return; }
   const d = debts[_installDebtIdx];
   if (!d.installments || idx > d.installments.length) { toast('期数超出范围'); return; }
-  quickPayInstall(_installDebtIdx, idx - 1);
+  quickPayInstall(_installDebtIdx, idx - 1, amount);
   document.getElementById('installPayIndex').value = '';
+  amtInput.value = '';
 }
 
 // ============ LEDGER ============
@@ -1079,6 +1116,7 @@ function calcMortgage() {
 function importMortgageToDebt() {
   if (!window._mortgageData) { toast('请先计算房贷'); return; }
   const d = window._mortgageData;
+  const perInstall = d.amount / (d.years * 12);
   debts.push({
     name: `房贷 (${d.years}年 ${d.rate}%)`,
     amount: d.amount,
@@ -1088,7 +1126,7 @@ function importMortgageToDebt() {
     installCount: d.years * 12,
     installDay: 1,
     reminder: false,
-    installments: Array.from({length: d.years * 12}, (_, k) => ({ index: k + 1, status: 'pending', paid: false })),
+    installments: Array.from({length: d.years * 12}, (_, k) => ({ index: k + 1, status: 'pending', paid: false, paidAmount: 0, dueAmount: perInstall })),
     created: Date.now()
   });
   saveData('debts', debts);
