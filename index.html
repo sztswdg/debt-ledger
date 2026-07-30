@@ -738,7 +738,10 @@ function showLiabilityForm(liability){
       </div>
     </div>
     ${isEdit?`<div style="margin:12px 0"><button class="btn btn-danger btn-block" onclick="deleteLiability('${liability.id}')">删除此负债</button></div>`:''}
-    <button class="btn btn-primary btn-block" onclick="saveLiability('${isEdit?liability.id:''}')">${isEdit?'保存':'添加'}</button>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-${isEdit?'primary':'outline'} btn-block" onclick="saveLiability('${isEdit?liability.id:''}')">保存</button>
+      ${!isEdit?`<button class="btn btn-primary btn-block" onclick="saveLiability('')">添加</button>`:''}
+    </div>
   `);
   window._lfIsInstallment=isInstallment;
   // Initialize custom amounts if editing with varying amounts
@@ -782,9 +785,22 @@ function genCustomAmtInputs(){
   let html='';
   for(let i=0;i<months;i++){
     const val=amts[i]!==undefined?amts[i]:'';
-    html+=`<div class="custom-amt-row"><span class="amt-label">第${i+1}期</span><input class="amt-input" id="lfCustAmt_${i}" value="${val}" inputmode="decimal" placeholder="金额"></div>`;
+    html+=`<div class="custom-amt-row"><span class="amt-label">第${i+1}期</span><input class="amt-input" id="lfCustAmt_${i}" value="${val}" inputmode="decimal" placeholder="金额" oninput="autoSumCustomAmounts()"></div>`;
   }
   el.innerHTML=html;
+}
+
+function autoSumCustomAmounts(){
+  const totalInput=document.getElementById('lfTotal');
+  if(!totalInput)return;
+  let sum=0,allFilled=true;
+  const months=Math.min(36,Math.max(1,parseInt(($('lfMonths').value||'1'))));
+  for(let i=0;i<months;i++){
+    const val=parseFloat((document.getElementById('lfCustAmt_'+i)||{}).value||'');
+    if(!isNaN(val)&&val>0)sum+=val;
+    else {allFilled=false;break;}
+  }
+  if(allFilled&&sum>0)totalInput.value=sum.toFixed(2);
 }
 
 function getCustomAmounts(months){
