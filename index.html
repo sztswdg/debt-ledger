@@ -1168,26 +1168,27 @@ async function renderCharts(){
 
   // Render charts after DOM update
   setTimeout(()=>{
-    const chartOpts={responsive:true,maintainAspectRatio:true,aspectRatio:1.6,plugins:{legend:{labels:{color:getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93',font:{size:11}}}}};
-    const lineOpts={...chartOpts,scales:{x:{grid:{color:'var(--chart-grid)'},ticks:{color:'var(--text-secondary)',font:{size:10}}},y:{grid:{color:'var(--chart-grid)'},ticks:{color:'var(--text-secondary)',font:{size:10}}}}};
+    const textColor=getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93';
+    const baseOpts={responsive:true,maintainAspectRatio:true,aspectRatio:1.6,plugins:{legend:{labels:{color:textColor,font:{size:11}}}}};
+    const lineBase={...baseOpts,scales:{x:{grid:{color:'var(--chart-grid)'},ticks:{color:'var(--text-secondary)',font:{size:10}}},y:{grid:{color:'var(--chart-grid)'},ticks:{color:'var(--text-secondary)',font:{size:10}}}}};
 
     if(document.getElementById('chartAsset')){
-      chartInstances.asset=new Chart(document.getElementById('chartAsset'),{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'总资产',data:assetData,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:{...lineOpts,plugins:{...lineOpts.plugins,legend:{...lineOpts.plugins.legend,labels:{...lineOpts.plugins.legend.labels,color:getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93'}}}}}});
+      chartInstances.asset=new Chart(document.getElementById('chartAsset'),{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'总资产',data:assetData,borderColor:'#007aff',backgroundColor:'rgba(0,122,255,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:lineBase});
     }
     if(document.getElementById('chartLiability')){
-      chartInstances.liability=new Chart(document.getElementById('chartLiability'),{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'总负债',data:liabilityData,borderColor:'#ff3b30',backgroundColor:'rgba(255,59,48,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:{...lineOpts,plugins:{...lineOpts.plugins,legend:{...lineOpts.plugins.legend,labels:{...lineOpts.plugins.legend.labels,color:getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93'}}}}});
+      chartInstances.liability=new Chart(document.getElementById('chartLiability'),{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'总负债',data:liabilityData,borderColor:'#ff3b30',backgroundColor:'rgba(255,59,48,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:lineBase});
     }
     if(document.getElementById('chartNet')){
-      chartInstances.net=new Chart(document.getElementById('chartNet'),{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'净资产',data:netData,borderColor:'#34c759',backgroundColor:'rgba(52,199,89,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:{...lineOpts,plugins:{...lineOpts.plugins,legend:{...lineOpts.plugins.legend,labels:{...lineOpts.plugins.legend.labels,color:getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93'}}}}});
+      chartInstances.net=new Chart(document.getElementById('chartNet'),{type:'line',data:{labels:months.map(m=>m.label),datasets:[{label:'净资产',data:netData,borderColor:'#34c759',backgroundColor:'rgba(52,199,89,0.1)',fill:true,tension:0.4,pointRadius:3}]},options:lineBase});
     }
     if(document.getElementById('chartRepay')){
-      chartInstances.repay=new Chart(document.getElementById('chartRepay'),{type:'bar',data:{labels:repayLabels,datasets:[{label:'应还',data:repayDue,backgroundColor:'rgba(255,59,48,0.6)',borderRadius:4},{label:'已还',data:repayPaid,backgroundColor:'rgba(52,199,89,0.6)',borderRadius:4}]},options:{...lineOpts,plugins:{...lineOpts.plugins,legend:{...lineOpts.plugins.legend,labels:{...lineOpts.plugins.legend.labels,color:getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93'}}}}});
+      chartInstances.repay=new Chart(document.getElementById('chartRepay'),{type:'bar',data:{labels:repayLabels,datasets:[{label:'应还',data:repayDue,backgroundColor:'rgba(255,59,48,0.6)',borderRadius:4},{label:'已还',data:repayPaid,backgroundColor:'rgba(52,199,89,0.6)',borderRadius:4}]},options:lineBase});
     }
     if(document.getElementById('chartExpense')){
       const expLabels=Object.keys(expenseMap);
       const expData=Object.values(expenseMap);
       const pieColors=['#ff6b6b','#f0932b','#6ab04c','#22a6b3','#686de0','#e056fd','#00b894','#0984e3','#f9ca24','#636e72'];
-      chartInstances.expense=new Chart(document.getElementById('chartExpense'),{type:'doughnut',data:{labels:expLabels,datasets:[{data:expData,backgroundColor:pieColors.slice(0,expLabels.length),borderWidth:0}]},options:{...chartOpts,plugins:{...chartOpts.plugins,legend:{...chartOpts.plugins.legend,position:'bottom',labels:{...chartOpts.plugins.legend.labels,color:getComputedStyle(document.body).getPropertyValue('--text-secondary').trim()||'#8e8e93'}}}}});
+      chartInstances.expense=new Chart(document.getElementById('chartExpense'),{type:'doughnut',data:{labels:expLabels,datasets:[{data:expData,backgroundColor:pieColors.slice(0,expLabels.length),borderWidth:0}]},options:{...baseOpts,plugins:{...baseOpts.plugins,legend:{position:'bottom',labels:{color:textColor,font:{size:11}}}}}});
     }
   },100);
 }
